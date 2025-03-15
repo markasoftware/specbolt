@@ -27,7 +27,6 @@ else ()
   target_sources(z80_v1 PRIVATE
           Disassembler.cpp
           Instruction.cpp
-          Decoder.cpp
           Decoder.hpp
           Z80.cpp
   )

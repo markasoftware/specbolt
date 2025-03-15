@@ -5,8 +5,9 @@ option(SPECBOLT_CONSOLE "Build specbolt console" ON)
 option(SPECBOLT_PREFER_SYSTEM_DEPS "Prefer using system dependencies" OFF)
 option(SPECBOLT_MODULES "Use C++ Modules" ON)
 
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -fexperimental-library")
+
 if (SPECBOLT_MODULES)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     set(CMAKE_CXX_STANDARD 26)
     set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "0e5b6991-d74f-4b3d-a41c-cf096e0b2508")
     set(CMAKE_CXX_MODULE_STD 1)
@@ -17,7 +18,7 @@ endif ()
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
-add_link_options("-fuse-ld=lld")
+add_link_options("-fuse-ld=lld-20")
 
 project(specbolt VERSION 0.1 LANGUAGES CXX)
 
