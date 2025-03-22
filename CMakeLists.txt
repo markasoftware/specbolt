@@ -6,7 +6,8 @@ option(SPECBOLT_PREFER_SYSTEM_DEPS "Prefer using system dependencies" OFF)
 option(SPECBOLT_MODULES "Use C++ Modules" ON)
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -fexperimental-library")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ggdb")
+# set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 if (SPECBOLT_MODULES)
     set(CMAKE_CXX_STANDARD 26)
