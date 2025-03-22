@@ -12,8 +12,6 @@
 
 namespace specbolt::v1::impl {
 
-namespace {
-
 using Operand = Instruction::Operand;
 using Op = Instruction::Operation;
 
@@ -47,7 +45,7 @@ __attribute__((always_inline)) inline static Instruction add_4(Instruction i) {
   return i;
 }
 
-__attribute__((always_inline)) Instruction::Operand source_operand_for(const std::uint8_t opcode) {
+__attribute__((always_inline)) inline Instruction::Operand source_operand_for(const std::uint8_t opcode) {
   // todo unify with load_source_for
   switch (opcode & 0x7) {
     case 0: return Operand::B;
@@ -64,7 +62,7 @@ __attribute__((always_inline)) Instruction::Operand source_operand_for(const std
   }
 }
 
-__attribute__((always_inline)) constexpr std::optional<Instruction::Operand> load_source_for(const std::uint8_t opcode) {
+__attribute__((always_inline)) inline constexpr std::optional<Instruction::Operand> load_source_for(const std::uint8_t opcode) {
   if (const auto quarter = opcode >> 6; quarter == 0) {
     switch (opcode & 0x3f) {
       case 0x01:
@@ -101,7 +99,7 @@ __attribute__((always_inline)) constexpr std::optional<Instruction::Operand> loa
   return std::nullopt;
 }
 
-__attribute__((always_inline)) constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t opcode) {
+__attribute__((always_inline)) inline constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t opcode) {
   if (opcode == 0x76)
     return std::nullopt; // HALT
   if (const auto quarter = opcode >> 6; quarter == 0) {
@@ -269,7 +267,7 @@ __attribute__((always_inline)) Instruction decode_ddfd(const std::span<const std
   return invalid_2;
 }
 
-__attribute__((always_inline)) Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
+__attribute__((always_inline)) inline Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
   switch (const auto opcode = opcodes[0]) {
     case 0x47: return {"ld {}, {}", 2, Op::LoadSpecial, Operand::I, Operand::A};
     case 0x57: return {"ld {}, {}", 2, Op::LoadSpecial, Operand::A, Operand::I};
@@ -350,7 +348,7 @@ __attribute__((always_inline)) Instruction decode_ed(const std::span<const std::
   return invalid_2;
 }
 
-__attribute__((always_inline)) Instruction decode_dynamic(const std::array<std::uint8_t, 4> opcodes) {
+__attribute__((always_inline)) inline Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
   const auto opcode = opcodes[0];
   if (const auto maybe_load_dest = load_dest_for(opcode); maybe_load_dest.has_value()) {
     const auto dest = maybe_load_dest.value();
@@ -590,52 +588,6 @@ __attribute__((always_inline)) Instruction decode_dynamic(const std::array<std::
     default: break;
   }
   return invalid;
-}
-
-// engage m a g i c
-template<auto prefix, size_t next_byte = 0>
-requires (next_byte <= 0xFF)  // this line can be removed; it's just a failsafe to prevent infinite recursion
-__attribute__((always_inline)) std::optional<Instruction> decode_static_prefix(const std::array<std::uint8_t, 4> opcodes) {
-  // first, verify that the prefix matches
-  for (std::size_t i = 0; i < prefix.size(); i++) {
-    if (opcodes[i] != prefix[i]) return std::nullopt;
-  }
-  // now see if the next byte matches
-  if (opcodes[prefix.size()] != static_cast<uint8_t>(next_byte)) {
-    if constexpr (next_byte == 0xFF) return std::nullopt;
-    // prevent infinite recursion hack
-    return decode_static_prefix<prefix, next_byte + 1 < 0xFF ? next_byte + 1 : next_byte>(opcodes);
-  }
-
-  // We matched! Defer to dynamic decode.
-  return decode_dynamic(opcodes);
-}
-
-// jeremy rifkin told me how to use `auto...` => direct complaints to jeremy.rifkin@aquatic.com
-template<auto... prefixes>
-__attribute__((always_inline)) Instruction decode_static_prefixes(const std::array<std::uint8_t, 4> opcodes) {
-  if constexpr (sizeof...(prefixes) == 0) return invalid;
-
-  auto prefix = std::get<0>(std::tuple{prefixes...});
-
-  std::optional<Instruction> maybe_decoded = decode_static_prefix<prefix>(opcodes);
-  if (maybe_decoded) return *maybe_decoded;
-
-  return decode_static_prefixes<prefixes...>(opcodes);
-}
-
-} // namespace
-
-__attribute__((always_inline)) inline Instruction decode(const std::array<std::uint8_t, 4> opcode) {
-  return decode_static_prefixes<
-    std::array<std::uint8_t, 0>{},
-    std::array<std::uint8_t, 1>{0xDD},
-    std::array<std::uint8_t, 1>{0xFD},
-    std::array<std::uint8_t, 1>{0xCB},
-    std::array<std::uint8_t, 2>{0xDD, 0xCB},
-    std::array<std::uint8_t, 2>{0xFD, 0xCB},
-    std::array<std::uint8_t, 1>{0xED}
-  >(opcode);
 }
 
 } // namespace specbolt::v1::impl

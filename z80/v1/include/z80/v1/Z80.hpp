@@ -25,6 +25,12 @@ inline std::size_t Z80::execute_one() {
   const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
   const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
+  execute_one_inner(std::move(opcodes), initial_pc);
+  return now_tstates_ - initial_time;
+}
+
+// what originally used to be hardcoded in Z80::execute_one():
+__attribute__((always_inline)) inline void Z80::execute_one_inner_dynamic(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
   const auto decoded = impl::decode(opcodes);
   pass_time(4);
   regs_.pc(initial_pc + decoded.length); // NOT RIGHT
@@ -36,7 +42,52 @@ inline std::size_t Z80::execute_one() {
     regs_.pc(initial_pc);
     throw;
   }
-  return now_tstates_ - initial_time;
+}
+
+// engage m a g i c
+template<auto prefix, std::size_t next_byte>
+requires(next_byte <= 0xFF)  // this can be removed, it's just a failsafe to prevent infinite recursion
+__attribute__((always_inline)) bool Z80::execute_one_inner_static_prefix(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
+  // first, verify that the prefix matches
+  for (std::size_t i = 0; i < prefix.size(); i++) {
+    if (opcodes[i] != prefix[i]) return false;
+  }
+  // now see if the next byte matches
+  if (opcodes[prefix.size()] != static_cast<uint8_t>(next_byte)) {
+    if constexpr (next_byte == 0xFF) return false;
+    // prevent infinite recursion hack
+    return execute_one_inner_static_prefix<prefix, next_byte + 1 < 0xFF ? next_byte + 1 : next_byte>(opcodes, initial_pc);
+  }
+
+  // We matched! Defer to dynamic
+  execute_one_inner_dynamic(opcodes, initial_pc);
+  return true;
+}
+
+// jeremy rifkin told me how to use `auto...` => direct complaints to jeremy.rifkin@aquatic.com
+template<auto... prefixes>
+__attribute__((always_inline)) void Z80::execute_one_inner_static_prefixes(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
+  // invalid instruction
+  if constexpr (sizeof...(prefixes) == 0) return execute_one_inner_dynamic(opcodes, initial_pc);
+
+  auto prefix = std::get<0>(std::tuple{prefixes...});
+
+  bool matched = execute_one_inner_static_prefix<prefix>(opcodes, initial_pc);
+  if (matched) return;
+
+  return execute_one_inner_static_prefixes<prefixes...>(opcodes, initial_pc);
+}
+
+inline void Z80::execute_one_inner(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
+  execute_one_inner_static_prefixes<
+    std::array<std::uint8_t, 0>{},
+    std::array<std::uint8_t, 1>{0xDD},
+    std::array<std::uint8_t, 1>{0xFD},
+    std::array<std::uint8_t, 1>{0xCB},
+    std::array<std::uint8_t, 2>{0xDD, 0xCB},
+    std::array<std::uint8_t, 2>{0xFD, 0xCB},
+    std::array<std::uint8_t, 1>{0xED}
+  >(opcodes, initial_pc);
 }
 
 __attribute__((always_inline)) inline void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
