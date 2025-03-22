@@ -24,7 +24,7 @@ else ()
             PRIVATE
             Alu.cpp
             Flags.cpp
-            RegisterFile.cpp
+            # RegisterFile.cpp
             Z80Base.cpp
     )
 

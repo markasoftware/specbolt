@@ -140,7 +140,7 @@ __attribute__((always_inline)) constexpr std::optional<Instruction::Operand> loa
   return std::nullopt;
 }
 
-constexpr std::uint8_t operand_length(const Instruction::Operand operand) {
+__attribute__((always_inline)) constexpr std::uint8_t operand_length(const Instruction::Operand operand) {
   switch (operand) {
     default: return 0;
     case Operand::WordImmediateIndirect8:
@@ -593,49 +593,49 @@ __attribute__((always_inline)) Instruction decode_dynamic(const std::array<std::
 }
 
 // engage m a g i c
-  template<auto prefix, size_t next_byte = 0>
-  requires (next_byte <= 0xFF)  // this line can be removed; it's just a failsafe to prevent infinite recursion
-  __attribute__((always_inline)) std::optional<Instruction> decode_static_prefix(const std::array<std::uint8_t, 4> opcodes) {
-    // first, verify that the prefix matches
-    for (std::size_t i = 0; i < prefix.size(); i++) {
-      if (opcodes[i] != prefix[i]) return std::nullopt;
-    }
-    // now see if the next byte matches
-    if (opcodes[prefix.size()] != static_cast<uint8_t>(next_byte)) {
-      if constexpr (next_byte == 0xFF) return std::nullopt;
-      // prevent infinite recursion hack
-      return decode_static_prefix<prefix, next_byte + 1 < 0xFF ? next_byte + 1 : next_byte>(opcodes);
-    }
-
-    // We matched! Defer to dynamic decode.
-    return decode_dynamic(opcodes);
+template<auto prefix, size_t next_byte = 0>
+requires (next_byte <= 0xFF)  // this line can be removed; it's just a failsafe to prevent infinite recursion
+__attribute__((always_inline)) std::optional<Instruction> decode_static_prefix(const std::array<std::uint8_t, 4> opcodes) {
+  // first, verify that the prefix matches
+  for (std::size_t i = 0; i < prefix.size(); i++) {
+    if (opcodes[i] != prefix[i]) return std::nullopt;
   }
+  // now see if the next byte matches
+  if (opcodes[prefix.size()] != static_cast<uint8_t>(next_byte)) {
+    if constexpr (next_byte == 0xFF) return std::nullopt;
+    // prevent infinite recursion hack
+    return decode_static_prefix<prefix, next_byte + 1 < 0xFF ? next_byte + 1 : next_byte>(opcodes);
+  }
+
+  // We matched! Defer to dynamic decode.
+  return decode_dynamic(opcodes);
+}
 
 // jeremy rifkin told me how to use `auto...` => direct complaints to jeremy.rifkin@aquatic.com
-  template<auto... prefixes>
-  __attribute__((always_inline)) Instruction decode_static_prefixes(const std::array<std::uint8_t, 4> opcodes) {
-    if constexpr (sizeof...(prefixes) == 0) return invalid;
+template<auto... prefixes>
+__attribute__((always_inline)) Instruction decode_static_prefixes(const std::array<std::uint8_t, 4> opcodes) {
+  if constexpr (sizeof...(prefixes) == 0) return invalid;
 
-    auto prefix = std::get<0>(std::tuple{prefixes...});
+  auto prefix = std::get<0>(std::tuple{prefixes...});
 
-    std::optional<Instruction> maybe_decoded = decode_static_prefix<prefix>(opcodes);
-    if (maybe_decoded) return *maybe_decoded;
+  std::optional<Instruction> maybe_decoded = decode_static_prefix<prefix>(opcodes);
+  if (maybe_decoded) return *maybe_decoded;
 
-    return decode_static_prefixes<prefixes...>(opcodes);
-  }
+  return decode_static_prefixes<prefixes...>(opcodes);
+}
 
 } // namespace
 
-  inline Instruction decode(const std::array<std::uint8_t, 4> opcode) {
-    return decode_static_prefixes<
-      std::array<std::uint8_t, 0>{},
-      std::array<std::uint8_t, 1>{0xDD},
-      std::array<std::uint8_t, 1>{0xFD},
-      std::array<std::uint8_t, 1>{0xCB},
-      std::array<std::uint8_t, 2>{0xDD, 0xCB},
-      std::array<std::uint8_t, 2>{0xFD, 0xCB},
-      std::array<std::uint8_t, 1>{0xED}
-      >(opcode);
-  }
+__attribute__((always_inline)) inline Instruction decode(const std::array<std::uint8_t, 4> opcode) {
+  return decode_static_prefixes<
+    std::array<std::uint8_t, 0>{},
+    std::array<std::uint8_t, 1>{0xDD},
+    std::array<std::uint8_t, 1>{0xFD},
+    std::array<std::uint8_t, 1>{0xCB},
+    std::array<std::uint8_t, 2>{0xDD, 0xCB},
+    std::array<std::uint8_t, 2>{0xFD, 0xCB},
+    std::array<std::uint8_t, 1>{0xED}
+  >(opcode);
+}
 
 } // namespace specbolt::v1::impl

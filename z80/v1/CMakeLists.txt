@@ -26,9 +26,7 @@ else ()
 
   target_sources(z80_v1 PRIVATE
           Disassembler.cpp
-          Instruction.cpp
-          Decoder.hpp
-          Z80.cpp
+          # Decoder.hpp
   )
   # you can also have private headers not accessible from outside, later you can use sets to change it nicely to modules
   target_sources(z80_v1 PUBLIC FILE_SET interface TYPE HEADERS FILES
