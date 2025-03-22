@@ -36,14 +36,11 @@ public:
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand, std::int8_t index_offset);
   void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
 
+  // this one shouldn't really be public, we should probably use friend functions
+  void execute_one_inner_dynamic(const std::array<std::uint8_t, 4> opcode, std::uint16_t initial_pc);
+
 private:
   void execute_one_inner(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc);
-  template<auto prefix, std::size_t next_byte = 0>
-  requires(next_byte <= 0xFF)  // this can be removed, it's just a failsafe to prevent infinite recursion
-  bool execute_one_inner_static_prefix(const std::array<std::uint8_t, 4> opcode, std::uint16_t initial_pc);
-  template<auto... prefixes>
-  void execute_one_inner_static_prefixes(const std::array<std::uint8_t, 4> opcode, std::uint16_t initial_pc);
-  void execute_one_inner_dynamic(const std::array<std::uint8_t, 4> opcode, std::uint16_t initial_pc);
 
   void execute(const Instruction &instr);
 };

@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <utility>
 #include "peripherals/Memory.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/v1/Z80.decl.hpp"
@@ -44,38 +45,46 @@ __attribute__((always_inline)) inline void Z80::execute_one_inner_dynamic(const 
   }
 }
 
-// engage m a g i c
-template<auto prefix, std::size_t next_byte>
-requires(next_byte <= 0xFF)  // this can be removed, it's just a failsafe to prevent infinite recursion
-__attribute__((always_inline)) bool Z80::execute_one_inner_static_prefix(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
-  // first, verify that the prefix matches
+namespace {
+
+template<auto prefix>
+__attribute__((always_inline)) bool matches_prefix(const std::array<std::uint8_t, 4> opcodes) {
   for (std::size_t i = 0; i < prefix.size(); i++) {
     if (opcodes[i] != prefix[i]) return false;
   }
-  // now see if the next byte matches
-  if (opcodes[prefix.size()] != static_cast<uint8_t>(next_byte)) {
-    if constexpr (next_byte == 0xFF) return false;
-    // prevent infinite recursion hack
-    return execute_one_inner_static_prefix<prefix, next_byte + 1 < 0xFF ? next_byte + 1 : next_byte>(opcodes, initial_pc);
-  }
-
-  // We matched! Defer to dynamic
-  execute_one_inner_dynamic(opcodes, initial_pc);
   return true;
 }
 
+// engage m a g i c
+template<auto prefix, std::size_t next_byte>
+requires(next_byte <= 0xFF)  // this can be removed
+__attribute__((always_inline)) void execute_one_inner_static_prefix(Z80 &z80, const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
+  // show the compiler that the prefix matches
+  if (!matches_prefix<prefix>(opcodes)) std::unreachable();
+  // show the compiler that the next byte matches
+  if (opcodes[prefix.size()] != static_cast<uint8_t>(next_byte)) std::unreachable();
+
+  // Defer to dynamic, constant propagation should take us the rest of the way from here.
+  z80.execute_one_inner_dynamic(opcodes, initial_pc);
+}
+
+template<auto prefix>
+constexpr auto generic_table = []<std::size_t... num>(std::index_sequence<num...>) {
+  return std::array{(&execute_one_inner_static_prefix<prefix, num>)...};
+}(std::make_index_sequence<256>());
+
 // jeremy rifkin told me how to use `auto...` => direct complaints to jeremy.rifkin@aquatic.com
-template<auto... prefixes>
-__attribute__((always_inline)) void Z80::execute_one_inner_static_prefixes(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
+template<auto prefix = std::array<uint8_t, 0>{}, auto... prefixes>
+__attribute__((always_inline)) void execute_one_inner_static_prefixes(Z80 &z80, const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
+  if (matches_prefix<prefix>(opcodes)) return generic_table<prefix>[opcodes[prefix.size()]](z80, opcodes, initial_pc);
+
   // invalid instruction
-  if constexpr (sizeof...(prefixes) == 0) return execute_one_inner_dynamic(opcodes, initial_pc);
+  if constexpr (sizeof...(prefixes) == 0) return z80.execute_one_inner_dynamic(opcodes, initial_pc);
 
-  auto prefix = std::get<0>(std::tuple{prefixes...});
+  // not invalid instruction, just need to try next prefix.
+  return execute_one_inner_static_prefixes<prefixes...>(z80, opcodes, initial_pc);
+}
 
-  bool matched = execute_one_inner_static_prefix<prefix>(opcodes, initial_pc);
-  if (matched) return;
-
-  return execute_one_inner_static_prefixes<prefixes...>(opcodes, initial_pc);
 }
 
 inline void Z80::execute_one_inner(const std::array<std::uint8_t, 4> opcodes, std::uint16_t initial_pc) {
@@ -87,7 +96,7 @@ inline void Z80::execute_one_inner(const std::array<std::uint8_t, 4> opcodes, st
     std::array<std::uint8_t, 2>{0xDD, 0xCB},
     std::array<std::uint8_t, 2>{0xFD, 0xCB},
     std::array<std::uint8_t, 1>{0xED}
-  >(opcodes, initial_pc);
+  >(*this, opcodes, initial_pc);
 }
 
 __attribute__((always_inline)) inline void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
